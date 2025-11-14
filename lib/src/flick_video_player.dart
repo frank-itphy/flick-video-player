@@ -22,11 +22,13 @@ class FlickVideoPlayer extends StatefulWidget {
     ],
     this.preferredDeviceOrientationFullscreen = const [
       DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight
+      DeviceOrientation.landscapeRight,
     ],
     this.wakelockEnabled = true,
     this.wakelockEnabledFullscreen = true,
     this.webKeyDownHandler = flickDefaultWebKeyDownHandler,
+    this.onEnterFullscreen,
+    this.onExitFullscreen,
   }) : super(key: key);
 
   final FlickManager flickManager;
@@ -64,6 +66,12 @@ class FlickVideoPlayer extends StatefulWidget {
   /// Callback called on keyDown for web, used for keyboard shortcuts.
   final Function(KeyboardEvent, FlickManager) webKeyDownHandler;
 
+  /// 외부에서 풀스크린 진입할 때 훅
+  final Function()? onEnterFullscreen;
+
+  /// 외부에서 풀스크린 해제할 때 훅
+  final Function()? onExitFullscreen;
+
   @override
   _FlickVideoPlayerState createState() => _FlickVideoPlayerState();
 }
@@ -100,8 +108,9 @@ class _FlickVideoPlayerState extends State<FlickVideoPlayer>
     }
 
     if (kIsWeb) {
-      document.documentElement?.onFullscreenChange
-          .listen(_webFullscreenListener);
+      document.documentElement?.onFullscreenChange.listen(
+        _webFullscreenListener,
+      );
       document.documentElement?.onKeyDown.listen(_webKeyListener);
     }
   }
@@ -144,6 +153,12 @@ class _FlickVideoPlayerState extends State<FlickVideoPlayer>
     }
 
     _isFullscreen = true;
+
+    // 외부 콜백 먼저 호출
+    if (widget.onEnterFullscreen != null) {
+      widget.onEnterFullscreen!();
+    }
+
     _setPreferredOrientation();
     _setSystemUIOverlays();
     if (kIsWeb) {
@@ -154,15 +169,17 @@ class _FlickVideoPlayerState extends State<FlickVideoPlayer>
         setState(() {});
       });
     } else {
-      _overlayEntry = OverlayEntry(builder: (context) {
-        return Scaffold(
-          body: FlickManagerBuilder(
-            flickManager: flickManager,
-            child: widget.flickVideoWithControlsFullscreen ??
-                widget.flickVideoWithControls,
-          ),
-        );
-      });
+      _overlayEntry = OverlayEntry(
+        builder: (context) {
+          return Scaffold(
+            body: FlickManagerBuilder(
+              flickManager: flickManager,
+              child: widget.flickVideoWithControlsFullscreen ??
+                  widget.flickVideoWithControls,
+            ),
+          );
+        },
+      );
 
       Overlay.of(context).insert(_overlayEntry!);
     }
@@ -176,6 +193,11 @@ class _FlickVideoPlayerState extends State<FlickVideoPlayer>
     }
 
     _isFullscreen = false;
+
+    // 외부 콜백 먼저 호출
+    if (widget.onExitFullscreen != null) {
+      widget.onExitFullscreen!();
+    }
 
     if (kIsWeb) {
       document.exitFullscreen();
@@ -191,24 +213,21 @@ class _FlickVideoPlayerState extends State<FlickVideoPlayer>
   }
 
   _setPreferredOrientation() {
-    // when aspect ratio is less than 1 , video will be played in portrait mode and orientation will not be changed.
-    var aspectRatio =
-        widget.flickManager.flickVideoManager!.videoPlayerValue!.aspectRatio;
-    if (_isFullscreen && aspectRatio >= 1) {
-      SystemChrome.setPreferredOrientations(
-          widget.preferredDeviceOrientationFullscreen);
-    } else {
-      SystemChrome.setPreferredOrientations(widget.preferredDeviceOrientation);
-    }
+    // 포크 버전에서는 orientation 제어를 하지 않는다.
+    // 회전은 외부 video_orientation_controller 패키지가 담당.
   }
 
   _setSystemUIOverlays() {
     if (_isFullscreen) {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
-          overlays: widget.systemUIOverlayFullscreen);
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.manual,
+        overlays: widget.systemUIOverlayFullscreen,
+      );
     } else {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
-          overlays: widget.systemUIOverlay);
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.manual,
+        overlays: widget.systemUIOverlay,
+      );
     }
   }
 
